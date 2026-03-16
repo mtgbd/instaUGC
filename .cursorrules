@@ -1,0 +1,334 @@
+# InstaUGC — Cursor Rules
+# AI-powered Instagram UGC content generation SaaS
+# Read this entire file before writing any code.
+
+## Project Overview
+InstaUGC is a B2B SaaS that helps Shopify and DTC brands generate UGC-style
+Instagram content (Reels, carousels, hook+demo videos) using AI — without
+hiring human creators. Think ReelFarm but for Instagram.
+
+---
+
+## Tech Stack — Never deviate from this
+
+- Framework: Next.js 14 App Router (not Pages Router — never use pages/)
+- Language: TypeScript (strict mode — no any types ever)
+- Styling: Tailwind CSS + shadcn/ui components
+- Database: Supabase (Postgres + Auth + Storage)
+- Auth: Supabase Auth (Google OAuth + email/password)
+- AI Text: OpenAI GPT-4o via openai npm package
+- AI Video: HeyGen API (REST calls, no SDK)
+- AI Images: DALL-E 3 via OpenAI
+- Payments: Stripe (subscriptions + webhooks)
+- Instagram: Meta Graph API v18+ (REST, no SDK)
+- Job Queue: Vercel Cron (vercel.json config)
+- Hosting: Vercel
+- Package manager: npm (never yarn or pnpm)
+
+---
+
+## Folder Structure — Always follow this exactly
+
+src/
+├── app/
+│   ├── (auth)/           # Sign in, sign up pages
+│   │   ├── signin/
+│   │   └── signup/
+│   ├── (dashboard)/      # All protected dashboard pages
+│   │   ├── page.tsx      # Dashboard home
+│   │   ├── generate/
+│   │   ├── library/
+│   │   ├── calendar/
+│   │   ├── analytics/
+│   │   ├── billing/
+│   │   └── settings/
+│   ├── api/              # All API routes
+│   │   ├── generate/
+│   │   ├── publish/
+│   │   ├── schedule/
+│   │   ├── analytics/
+│   │   ├── billing/
+│   │   ├── scrape-product/
+│   │   ├── webhooks/
+│   │   └── cron/
+│   ├── auth/
+│   │   └── callback/     # Supabase OAuth callback
+│   └── onboarding/       # Onboarding wizard
+├── components/
+│   ├── ui/               # shadcn/ui components (never edit these)
+│   └── shared/           # Custom reusable components
+├── lib/
+│   ├── supabase/
+│   │   ├── client.ts     # Browser client
+│   │   └── server.ts     # Server client
+│   ├── openai.ts         # OpenAI client
+│   ├── heygen.ts         # HeyGen API client
+│   ├── stripe.ts         # Stripe client
+│   ├── credits.ts        # Credit check and deduction logic
+│   └── utils.ts          # General utilities (cn helper etc.)
+├── types/
+│   └── index.ts          # All TypeScript interfaces and types
+├── hooks/
+│   └── index.ts          # Custom React hooks
+└── middleware.ts          # Route protection (directly in src/)
+
+---
+
+## Code Style Rules — Always follow these
+
+### General
+- Always use TypeScript. Never use any — use unknown and narrow it.
+- Always use named exports for components, default exports for pages.
+- Always add "use client" at the top of client components.
+- Server components are default — only add "use client" when needed.
+- Never use var — always const or let.
+- Always handle errors — never leave unhandled promise rejections.
+- Always use optional chaining (?.) and nullish coalescing (??) where appropriate.
+
+### Components
+- Always use shadcn/ui components from @/components/ui — never build from scratch.
+- Component files: PascalCase (e.g. ProductCard.tsx)
+- One component per file unless tiny sub-components.
+- Props interfaces defined at the top of the file with explicit types.
+- Never inline style — always Tailwind classes.
+- Use cn() from @/lib/utils for conditional class names.
+
+### API Routes
+- Every API route must check authentication first using Supabase server client.
+- Return 401 if no session — never proceed without auth check.
+- Always wrap in try/catch — never let errors bubble up unhandled.
+- Always return NextResponse.json() — never plain Response.
+- Use proper HTTP status codes: 200, 201, 400, 401, 402, 403, 404, 429, 500.
+- Never expose stack traces in responses — log them server-side only.
+- Structure: auth check → input validation → business logic → return response.
+
+### Supabase
+- Browser client (client.ts): use in "use client" components only.
+- Server client (server.ts): use in Server Components, API routes, middleware.
+- Never use the service_role key client-side — server only.
+- Always use RLS — never bypass it with service_role in user-facing routes.
+- Table names are always snake_case and plural.
+- Always handle Supabase errors: const { data, error } = await supabase... then check error.
+
+### Environment Variables
+- Public (safe for client): prefix NEXT_PUBLIC_
+- Private (server only): no prefix — never access in client components
+- Public vars: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+- Private vars: SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY, HEYGEN_API_KEY, META_APP_ID, META_APP_SECRET, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, CRON_SECRET
+
+---
+
+## Database Schema — Know these tables
+
+### profiles
+id (uuid PK → auth.users), full_name, avatar_url, plan (default: starter),
+credits_remaining (default: 30), ai_credits_remaining (default: 10),
+onboarding_complete (default: false), created_at
+
+### instagram_accounts
+id, user_id → profiles, ig_user_id (unique), ig_username, ig_name,
+profile_pic_url, followers_count, access_token, token_expires_at,
+is_active (default: true), connected_at
+
+### products
+id, user_id → profiles, name (not null), description, price, url,
+usp (text[]), images (text[]), niche, tone, is_active, created_at
+
+### content_generations
+id, user_id → profiles, product_id → products,
+type (carousel | hook_demo | ugc_reel | static_post),
+status (pending | generating | ready | failed),
+output (jsonb), caption, hashtags (text[]), credits_used, created_at
+
+### scheduled_posts
+id, user_id → profiles, generation_id → content_generations,
+ig_account_id → instagram_accounts, scheduled_for (timestamptz),
+status (queued | publishing | published | failed),
+ig_post_id, published_at
+
+### post_analytics
+id, post_id → scheduled_posts, views, likes, saves,
+comments, profile_visits, fetched_at
+
+### subscriptions
+id, user_id → profiles, stripe_customer_id (unique),
+stripe_subscription_id (unique), plan, status, current_period_end, updated_at
+
+### credits_log
+id, user_id → profiles, action, credits_delta (int, negative = spend),
+balance_after, generation_id (nullable), created_at
+
+---
+
+## Pricing Plans
+
+| Plan    | Price   | credits_remaining | ai_credits | IG accounts |
+|---------|---------|-------------------|------------|-------------|
+| starter | $29/mo  | 30                | 10         | 1           |
+| growth  | $79/mo  | 100               | 40         | 3           |
+| scale   | $149/mo | 250               | 100        | 8           |
+| agency  | $299/mo | unlimited         | 200        | unlimited   |
+
+Credit costs:
+- 1 carousel or static post = 1 credit
+- 1 hook+demo video = 3 credits
+- 1 full AI avatar UGC Reel = 5 credits
+
+---
+
+## Key Business Logic Rules
+
+### Credit system
+- Always check credits BEFORE calling any AI API.
+- Use checkAndDeductCredits() from @/lib/credits.ts.
+- Return 402 { error: "insufficient_credits", credits_remaining: X } if not enough.
+- Always log every deduction to credits_log table.
+
+### Instagram publishing
+- Only use Meta Graph API — never use third-party posting libraries.
+- Always refresh token if within 7 days of expiry before any API call.
+- Handle 429 rate limit with exponential backoff (1s, 2s, 4s).
+- Only publish via official Graph API — never simulate or mock publishing.
+
+### Content generation
+- Carousel: GPT-4o for script + DALL-E 3 for images.
+- Hook+Demo video: GPT-4o for script + HeyGen API for video render.
+- Always generate 5 variants per request — only deduct 1 credit total.
+- Save every generation to content_generations table with status tracking.
+- Poll HeyGen video status — never block waiting for it synchronously.
+
+### Security rules (non-negotiable)
+- Every /api/* route: check auth session first, return 401 if none.
+- Every Supabase query: use authenticated client, never service_role for user data.
+- Rate limit all generation routes: 10 req/min per user.
+- Rate limit publish routes: 5 req/min per user.
+- Never log access tokens or API keys.
+- Never return raw error stack traces in API responses.
+
+---
+
+## UI / UX Patterns
+
+### Design system
+- Primary color: indigo #4F46E5 (Tailwind: indigo-600)
+- Use Tailwind indigo scale for primary actions.
+- Text: gray-900 (primary), gray-600 (secondary), gray-400 (tertiary).
+- Success: green-600, Warning: amber-600, Error: red-600.
+- Border radius: rounded-lg for cards, rounded-md for inputs/buttons.
+- Shadows: shadow-sm for cards only.
+
+### Loading states
+- Always show loading state on async actions — disable button + show spinner.
+- Use skeleton loaders for content that hasn't loaded yet.
+- Never show a blank screen while loading.
+
+### Error states
+- Always show user-friendly error messages — never show raw error text.
+- Use sonner toast for transient errors (network, API failures).
+- Use inline error text for form validation errors.
+
+### Empty states
+- Every list/grid page needs an empty state component.
+- Empty state: icon + title + description + CTA button.
+
+### Toast notifications (sonner)
+- Success: green, 4 seconds
+- Error: red, 6 seconds, with retry action where applicable
+- Info: blue, 4 seconds
+- Warning: amber, 5 seconds
+
+---
+
+## Code Patterns to Always Use
+
+### Fetching data in Server Components
+```tsx
+import { createClient } from '@/lib/supabase/server'
+
+export default async function Page() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data, error } = await supabase.from('products').select('*')
+}
+```
+
+### API route pattern
+```ts
+import { createClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function POST(request: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const body = await request.json()
+  if (!body.required_field) {
+    return NextResponse.json({ error: 'required_field is required' }, { status: 400 })
+  }
+  try {
+    return NextResponse.json({ success: true, data })
+  } catch (error) {
+    console.error('Route error:', error)
+    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
+  }
+}
+```
+
+### Credit check before AI generation
+```ts
+import { checkAndDeductCredits } from '@/lib/credits'
+
+const success = await checkAndDeductCredits(user.id, 1, 'generated_carousel')
+if (!success) {
+  return NextResponse.json({ error: 'insufficient_credits' }, { status: 402 })
+}
+```
+
+---
+
+## What NOT to do — Never
+
+- Never use Pages Router (/pages directory)
+- Never use any TypeScript type
+- Never skip the auth check in API routes
+- Never call AI APIs without checking credits first
+- Never store secrets in client-side code or NEXT_PUBLIC_ variables
+- Never use inline styles — always Tailwind
+- Never edit files in /components/ui/ (shadcn auto-generated)
+- Never use engagement automation — only official Meta Graph API
+- Never return 500 errors to users without a friendly message
+- Never block on HeyGen video generation — always async polling
+- Never commit .env.local
+- Never bypass RLS with service_role in user-facing routes
+- Never use yarn or pnpm — always npm
+
+---
+
+## Current Build Status
+
+### Completed
+- Next.js 14 project initialised with TypeScript + Tailwind
+- shadcn/ui configured with all components installed
+- Supabase project created (South Asia — Mumbai)
+- Supabase browser + server clients configured in lib/supabase/
+- .env.local and .env.example created with all required keys
+- Project folder structure set up (app, components, lib, types, hooks)
+- All 8 database tables created with RLS policies
+- Auth trigger: auto-creates profile row on new user signup
+- Sign in page at /signin — Google OAuth + email/password form
+- Sign up page at /signup — with email verification confirmation screen
+- Auth callback route at /auth/callback
+- Middleware at src/middleware.ts — protects /dashboard and /onboarding
+- Onboarding wizard shell at /onboarding — 3-step progress bar with Next/Back
+- Onboarding Step 1 UI — Instagram connect button (OAuth wired later)
+- Product URL scraper API at /api/scrape-product
+
+### In Progress
+- Onboarding Step 2 — product input with URL scraper (Task 87)
+
+### Up Next
+- Onboarding Step 3 — niche and tone preferences (Task 94)
+- Dashboard layout — sidebar + header (Task 214)
+- Content generation page (Task 99)
