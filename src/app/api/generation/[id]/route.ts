@@ -4,8 +4,10 @@ import { getHeyGenVideoStatus } from '@/lib/heygen'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
+
   const supabase = await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
@@ -15,7 +17,7 @@ export async function GET(
   const { data: generation } = await supabase
     .from('content_generations')
     .select('*')
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('user_id', user.id)
     .single()
 
