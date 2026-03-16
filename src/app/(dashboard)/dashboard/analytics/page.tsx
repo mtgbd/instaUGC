@@ -23,11 +23,13 @@ export default async function AnalyticsPage() {
     redirect("/signin")
   }
 
-  const { count: totalPublished = 0 } = await supabase
+  const { count: totalPublishedRaw } = await supabase
     .from("scheduled_posts")
     .select("id", { count: "exact", head: true })
     .eq("user_id", user.id)
     .eq("status", "published")
+
+  const totalPublished = totalPublishedRaw ?? 0
 
   const { data: analyticsRows = [] } = await supabase
     .from("post_analytics")
@@ -62,11 +64,13 @@ export default async function AnalyticsPage() {
 
   const publishedPosts = publishedPostsData ?? []
 
-  const { data: genRows = [] } = await supabase
+  const { data: genRowsData } = await supabase
     .from("content_generations")
     .select("type")
     .eq("user_id", user.id)
     .eq("status", "ready")
+
+  const genRows = genRowsData ?? []
 
   const generationsByType = genRows.reduce(
     (acc: Record<string, number>, row: any) => {

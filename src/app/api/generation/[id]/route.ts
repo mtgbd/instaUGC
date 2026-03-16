@@ -4,9 +4,9 @@ import { getHeyGenVideoStatus } from '@/lib/heygen'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params
+  const { id } = await context.params
 
   const supabase = await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()

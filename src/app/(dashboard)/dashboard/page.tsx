@@ -47,12 +47,14 @@ export default async function DashboardPage() {
     Date.now() - 7 * 24 * 60 * 60 * 1000
   ).toISOString()
 
-  const { count: postsThisWeek = 0 } = await supabase
+  const { count: postsThisWeekRaw } = await supabase
     .from("scheduled_posts")
     .select("id", { count: "exact", head: true })
     .eq("user_id", user.id)
     .eq("status", "published")
     .gte("published_at", oneWeekAgoIso)
+
+  const postsThisWeek = postsThisWeekRaw ?? 0
 
   const { data: viewsRows } = await supabase
     .from("post_analytics")
@@ -62,12 +64,14 @@ export default async function DashboardPage() {
   const totalViews =
     viewsRows?.reduce((sum, row: any) => sum + (row.views ?? 0), 0) ?? 0
 
-  const { data: recentGenerations = [] } = await supabase
+  const { data: recentGenerationsData } = await supabase
     .from("content_generations")
     .select("id, type, status, created_at")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(4)
+
+  const recentGenerations = recentGenerationsData ?? []
 
   const hour = new Date().getHours()
   const greeting =
